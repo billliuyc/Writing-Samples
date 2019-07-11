@@ -1,0 +1,235 @@
+---
+title: "ACCESS Project"
+author: "Bill Liu"
+date: "April 18, 2019"
+output: html_document
+---
+
+##Abstract
+<b>Introduction</b> There have been growing literature highlighting the healthcare inequity among the U.S. population. The type of health care people access can have an impact on their health outcomes. This study aims to investigate this association by examining the reporting source for breast cancer and patients' survival. The objective of this study is to determine whether the different types of cancer diagnosis reporting source (eight types of sources as coded by medical records) are associated with a difference in breast cancer survival in the U.S. 
+<br />
+<b>Methods</b> Breast cancer diagnosis and survival data are extracted from the Surveillance, Epidemiology and End Results program database (SEER). SEER data will be downloaded from SEER"*"Stat, cleaned and analyzed in RStudio (3.5.2). Multiple imputation method will be used to account for missing data (package: MICE). A Cox proportional hazards regression model will be built to analyze the hazard ratio, as well as plotted on a survival curve in order to further characterize the association. A second model will be built by adjusting the survival curves by the mean of diagnosis age in each group.
+<br />
+<b>Results</b> Checking for missing data revealed no missing data were reported for our key variables. An Easter egg was also revealed in the consol when there are no possible *mice*! A univariate coxph model was constructed to reveal statistical significance on "laboratory", "nursing home", "surgery center", "physicians office", when compared with our reference group of "hospital" reporting (all p<.05). After adjusting for age, the multivariate model revealed protective effects from "surgery center" (coxph=0.67, p<.05), and hazardos effects from "laboratory" (coxph=1.43, p<.05), "physicians office"(coxph=3.00, p<.05). The most significant hazard of death comes from those reporting from "nursing home" (coxph=24.74, p<.05), compared with those reporting from hospitals, those reporting from nursing homes are 24.74 times the hazard of death. A survival curve was plotted based on this model.
+<br />
+<b>Discussion</b> In terms of statistical modelling, a third, multivariate model was constructed to test if the association seen in the previous two are consistent. However, with other variables controlled, the relationship persists. If this finding persists, it suggest that an increased effort should be focused on determining the causal pathways displayed by these associations. The results of this study can be used to prioritize cancer prevention efforts as well as early check-up campaigns. Further analysis on other types of cancer should be extended to see if this trend persists in order to generalize our findings. 
+
+##Preparation
+A select subset of SEER cancer data was exported from SEER*Stat. Along with related variables, these are imported into R and cleaned via code below. Variables deemed unusable are deleted. Cancer stage is grouped into I-IV, attributable death is recoded into binary, insurance status cleaned, and reporting type grouped recoded into factor variable.
+
+Warning is supressed and output is excluded due to the amount of times whole tables are called in this preparation chunk.
+```{r Preparation, warning=FALSE, results="hide"}
+#Checking packages for missing data analysis
+library(mice)
+library(VIM)
+library(lattice)
+
+#Checking packages for Survival Analysis
+library(readr) #for read txt file
+library(survival) #for calculating KM values
+library(survminer)#for pairwise diffs
+library(ggfortify) #for KM curves
+library(readxl) # for reading in excel file
+library(ggplot2) # for plotting KM curve
+library(tidyverse) # for various packages
+
+#Checking packages for Coxph Analysis
+library(lmtest) #model comparison
+library(stargazer) #model presentation
+
+#Creating descriptives
+library(tableone) #for descriptives
+
+#Getting data
+ACCESS <- read.csv("SEER_BRCA_Access full data.csv")
+str(ACCESS)
+
+#Cleaning unneccessarily exported variables
+ACCESS$SEER.registry <- NULL
+ACCESS$County <- NULL
+ACCESS$State.county <- NULL
+str(ACCESS)
+
+#Renaming variables
+names(ACCESS)<-c("ID", "sex", "race", "birth_year", "diagnosis_age", "diagnosis_year", "poverty_perc", "education_perc", "site", "reporting", "survival", "stage", "insurance", "death_specific", "death_other")
+str(ACCESS)
+
+#Double checking the data exported from SEER*Stat are breast cancer patients
+summary(ACCESS$site)
+
+#Deleting this variable because it looked fine
+ACCESS$site <- NULL
+
+#Cleaning $stage
+summary(ACCESS$stage)
+ACCESS$stage_cleaned[
+ACCESS$stage=="IA"|
+ACCESS$stage=="IB"]<-0
+ACCESS$stage_cleaned[
+ACCESS$stage=="IIA"|
+ACCESS$stage=="IIB"]<-1
+ACCESS$stage_cleaned[
+ACCESS$stage=="IIIA"|
+ACCESS$stage=="IIIB"|
+ACCESS$stage=="IIIC"|
+ACCESS$stage=="IIINOS"]<-2
+ACCESS$stage_cleaned[
+ACCESS$stage=="IV"]<-3
+ACCESS$stage_cleaned[
+ACCESS$stage=="UNK Stage"]<-4
+ACCESS$stage_cleaned<-factor(ACCESS$stage_cleaned,
+levels = c(0,1,2,3,4),
+labels = c("Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage Unknown"))
+table(ACCESS$stage_cleaned)
+
+#Cleaning $death_specific
+summary(ACCESS$death_specific)
+ACCESS$died[
+ACCESS$death_specific=="Dead (attributable to this cancer dx)"]<-1
+ACCESS$died[
+ACCESS$death_specific=="Alive or dead of other cause"|
+ACCESS$death_specific=="N/A not first tumor"]<-0
+levels = c(0, 1)
+levels = c("Not breast cancer specific", "Died of breast cancer")
+table(ACCESS$died)
+
+#Cleaning $insurance, totally copied these code word for word from HW9
+ACCESS$insurance_cleaned[
+ACCESS$insurance=="Insured"]<-0
+ACCESS$insurance_cleaned[
+ACCESS$insurance=="Insured/No specifics"]<-1
+ACCESS$insurance_cleaned[
+ACCESS$insurance=="Any Medicaid"]<-2
+ACCESS$insurance_cleaned[
+ACCESS$insurance=="Uninsured"]<-3
+ACCESS$insurance_cleaned[
+ACCESS$insurance=="Insurance status unknown"]<-4
+ACCESS$insurance_cleaned<-factor(ACCESS$insurance_cleaned,
+levels = c(0,1,2,3,4),
+labels = c("Insured", "Insured/No specifics", "Any Medicaid", "Uninsured", "Unknown"))
+table(ACCESS$insurance_cleaned)
+
+#Cleaning $reporting
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Hospital inpatient/outpatient or clinic"]<-0
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Autopsy only"]<-1
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Death certificate only"]<-2
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Laboratory only (hospital or private)"]<-3
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Nursing/convalescent home/hospice"]<-4
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Other hospital outpatient unit or surgery center (2006+)"]<-5
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Physicians office/private medical practitioner (LMD)"]<-6
+ACCESS$reporting_cleaned[
+ACCESS$reporting=="Radiation treatment or medical oncology center (2006+)"]<-7
+ACCESS$reporting_cleaned<-factor(ACCESS$reporting_cleaned,
+levels = c(0,1,2,3,4,5,6,7),
+labels = c("Hospital", "Autopsy", "Death certificate", "Laboratory", "Nursing home", "Surgery center", "Physicians office", "Oncology center"))
+table(ACCESS$reporting_cleaned)
+
+#Cleaning $survival
+ACCESS$survival <- as.numeric(ACCESS$survival)
+summary(ACCESS$survival)
+
+#Cleaning $ID, because OCD
+ACCESS$ID <- as.character(ACCESS$ID)
+summary(ACCESS$ID)
+
+#Cleaning $poverty_perc
+ACCESS$poverty_perc <- as.numeric(ACCESS$poverty_perc)
+summary(ACCESS$poverty_perc)
+
+#Cleaning $education_perc
+ACCESS$education_perc <- as.numeric(ACCESS$education_perc)
+summary(ACCESS$education_perc)
+
+#Checking variables that doesn't really need to be cleaned
+summary(ACCESS$sex)
+summary(ACCESS$race)
+summary(ACCESS$birth_year)
+summary(ACCESS$diagnosis_age)
+summary(ACCESS$diagnosis_year)
+```
+
+##Missing data management
+A separate dataset with just the used variables are created for clarity. This is done after I noticed that our main variables have no missing data. Surpirse! You get a kitty cat for that.
+
+However cute, with the addition of control variables like insurance and stage of diagnosis, the missing data can amount to a significant number. The lack of missing data in our primary variables is possibly due to the fact that reporting source is how this dataset collected its data points, and survival is its primary end point. 
+
+Instead, in the next section, omission methods are used to treat the NAs. This has its limitations, as we are rounding down our sample size to a smaller population, potentially overlooking effects.
+
+Still, I was curious so I did a marginsplot to see what no missing data pattern looks like anyways.
+```{r Data management}
+#Creating dataset with specified variables to look at missing data 
+keeps<-c("survival", "reporting_cleaned", "sex", "race", "diagnosis_age") #keep only these variables
+ACCESS_small<-ACCESS[keeps] #drops variables that are not in the keeps list
+
+#Checking for missing data pattern
+md.pattern(ACCESS_small)
+
+#Oh look at that, an Easter egg. This is good news.
+
+#Marginsplot, just for fun
+marginplot(ACCESS_small[,c("reporting_cleaned","survival")], col=c("blue","red","orange"), cex=1,
+cex.lab=1.3, cex.numbers=0.7, pch=19) 
+```
+
+##CoxPHazard analysis
+The reporting type variable is recoded to delete two categories "autopsy" and "death certificate". The reason being that if breast cancer is reported at death, then all survival rates will be zero in those categoeis, therefore making our model invalid. In truth, checking for those categories returned a lot of zeros, as well as errors when running the ggsurvplot function. A new variable is created, and NAs are omitted. The data is checked again to ensure that previous encoding are properly coded, and no additional empty fields are generated through this process.
+
+Three Cox Proportional Hazard regresion model are created. First, a univariate coxph model tests survival of reporting types. Second, a multivariate coxph model tests survival of reporting types with age adjusted. This model is used to graph survival plot. THird, another multivariate coxph model tests our association with the addition of control variables.
+```{r CoxPH}
+#Cleaning $reporting
+ACCESS$reporting_omit[
+ACCESS$reporting=="Hospital inpatient/outpatient or clinic"]<-0
+ACCESS$reporting_omit[
+ACCESS$reporting=="Laboratory only (hospital or private)"]<-1
+ACCESS$reporting_omit[
+ACCESS$reporting=="Nursing/convalescent home/hospice"]<-2
+ACCESS$reporting_omit[
+ACCESS$reporting=="Other hospital outpatient unit or surgery center (2006+)"]<-3
+ACCESS$reporting_omit[
+ACCESS$reporting=="Physicians office/private medical practitioner (LMD)"]<-4
+ACCESS$reporting_omit[
+ACCESS$reporting=="Radiation treatment or medical oncology center (2006+)"]<-5
+ACCESS$reporting_omit<-factor(ACCESS$reporting_omit,
+levels = c(0,1,2,3,4,5),
+labels = c("Hospital", "Laboratory", "Nursing home", "Surgery center", "Physicians office", "Oncology center"))
+table(ACCESS$reporting_omit)
+table(ACCESS$reporting_cleaned)
+
+ACCESS_omit = na.omit(ACCESS)
+head(ACCESS_omit)
+
+#Building a univariate cox proportional hazard model
+survival_uni = coxph(Surv(survival, died) ~ reporting_omit, data = ACCESS_omit, ties = "breslow") 
+summary(survival_uni)
+
+#Building a multivariate cox proportional hazard model
+survival_multi = coxph(Surv(survival, died) ~ reporting_omit + diagnosis_age, data = ACCESS_omit, ties = "breslow")
+summary(survival_multi)
+
+#Building a second multivariate cox proportional hazard model
+survival_multi2 = coxph(Surv(survival, died) ~ reporting_omit + diagnosis_age + sex + race + insurance_cleaned + stage_cleaned, data = ACCESS_omit, ties = "breslow")
+summary(survival_multi2)
+
+#Create the new data for plotting adjusted survival curves for each treatment group using diagnosis_age set at the mean
+reporting_mean = with(ACCESS_omit, data.frame(reporting_omit=c("Hospital", "Laboratory", "Nursing home", "Surgery center", "Physicians office", "Oncology center"), diagnosis_age=rep(mean(diagnosis_age, na.rm = T),6)))
+reporting_mean 
+
+ggsurvplot(survfit(survival_multi, newdata = reporting_mean), data = ACCESS_omit, conf.int = T,
+           legend.labs = c("Hospital", "Laboratory", "Nursing home", "Surgery center", "Physicians office", "Oncology center"), 
+           ggtheme=theme_classic())
+```
+
+##Running some descriptives
+It is too late to tag it at the end? I did this because we modified variables in the last chunk and created new datasets.
+
+```{r Descriptives}
+table_one <- CreateTableOne(vars = c("sex", "race", "diagnosis_age", "insurance_cleaned", "stage_cleaned", "survival", "died"), strata = "reporting_omit", data = ACCESS_omit)
+table_one
+```
