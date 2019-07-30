@@ -1,0 +1,496 @@
+--------------------------------------------------------------------------------------
+      name:  <Stata writing sample for MLR and Logistic>
+       log:  D:\....final.log
+  log type:  text
+ opened on:   3 Oct 2018, 01:24:16, Edited for data privacy on 30 Jul 2019
+
+. use brfss_final.dta
+
+. 
+. // Describe and setup the data
+. // Total observations and variable list
+. sum
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+          id |     25,678    243489.5    140210.2         34     486274
+         sex |     25,678    1.570605    .5015648          1          9
+       age80 |     25,678    55.41876    17.16168         18         80
+        race |     25,678     3.46425     13.4199          1         99
+    hispanic |     25,678    1.981541    .7314384          1          9
+-------------+---------------------------------------------------------
+        htm4 |     24,789    169.5013    10.49306        102        213
+       wtkg3 |     23,943    8103.293    2040.954       2268      24948
+    pregnant |      3,647    2.022484    .6431538          1          9
+    hlthpln1 |     25,592    .9268131    .2604482          0          1
+    exerany2 |     25,631    .7445671    .4361128          0          1
+-------------+---------------------------------------------------------
+    sleptim1 |     25,400    7.055236    1.512127          1         24
+    cvdinfr4 |     25,540    .0607674    .2389079          0          1
+      female |     25,675    .5697371    .4951225          0          1
+
+. describe
+
+Contains data from brfss_final.dta
+  obs:        25,678                          
+ vars:            13                          17 Feb 2018 18:59
+ size:       462,204                          
+--------------------------------------------------------------------------------------
+              storage   display    value
+variable name   type    format     label      variable label
+--------------------------------------------------------------------------------------
+id              float   %9.0g                 
+sex             byte    %8.0g                 Respondents Sex
+age80           byte    %8.0g                 Imputed Age Value Collapsed Above 80
+race            byte    %8.0g                 Calculated Non-Hispanic Race Including M
+hispanic        byte    %8.0g                 Hispanic, Latino/A, Or Spanish Origin Ca
+htm4            int     %8.0g                 Computed Height In Meters
+wtkg3           int     %8.0g                 Computed Weight In Kilograms
+pregnant        byte    %8.0g                 Pregnancy Status
+hlthpln1        byte    %8.0g                 Have Any Health Care Coverage
+exerany2        byte    %8.0g                 Exercise In Past 30 Days
+sleptim1        byte    %8.0g                 How Much Time Do You Sleep
+cvdinfr4        byte    %8.0g                 Ever Diagnosed With Heart Attack
+female          byte    %9.0g                 
+--------------------------------------------------------------------------------------
+Sorted by: 
+
+. 
+. // Relabeling sex variable
+. label define sexlabel 1 "male" 2 "female" 9 "refused"
+
+. label values sex sexlabel
+
+. 
+. // Creating a combined race/ethnicity variable
+. generate raceth = .
+(25,678 missing values generated)
+
+. replace raceth = 1 if race ==1 & hispanic ==2
+(19,363 real changes made)
+
+. replace raceth = 2 if race ==2 & hispanic ==2
+(2,105 real changes made)
+
+. replace raceth = 3 if race ==3 & hispanic ==2
+(371 real changes made)
+
+. replace raceth = 4 if race ==4 & hispanic ==2
+(562 real changes made)
+
+. replace raceth = 5 if race ==5 & hispanic ==2
+(88 real changes made)
+
+. replace raceth = 6 if race ==6 & hispanic ==2
+(105 real changes made)
+
+. replace raceth = 7 if race ==7 & hispanic ==2
+(488 real changes made)
+
+. replace raceth = 8 if race <=7 & hispanic ==1
+(1,902 real changes made)
+
+. replace raceth = 9 if race ==77 | race ==99 | race ==. | hispanic ==9 | hispanic ==.
+(694 real changes made)
+
+. label define racethlabel 1 "White, non-Hispanic" 2 "Black, non-Hispanic" 3 "American
+>  Indian or Alaskan Native, non-Hispanic" 4 "Asian, non-Hispanic" 5 "Native Hawaiian 
+> or other Pacific Islander, non-Hispanic" 6 "Other race, non-Hispanic" 7 "Multiracial
+> , non-Hispanic" 8 "Hispanic" 9 "Don't know/not sure/refused/missing"
+
+. label values raceth racethlabel
+
+. tab raceth
+
+                                 raceth |      Freq.     Percent        Cum.
+----------------------------------------+-----------------------------------
+                    White, non-Hispanic |     19,363       75.41       75.41
+                    Black, non-Hispanic |      2,105        8.20       83.60
+American Indian or Alaskan Native, non- |        371        1.44       85.05
+                    Asian, non-Hispanic |        562        2.19       87.24
+Native Hawaiian or other Pacific Island |         88        0.34       87.58
+               Other race, non-Hispanic |        105        0.41       87.99
+              Multiracial, non-Hispanic |        488        1.90       89.89
+                               Hispanic |      1,902        7.41       97.30
+    Don't know/not sure/refused/missing |        694        2.70      100.00
+----------------------------------------+-----------------------------------
+                                  Total |     25,678      100.00
+
+. tab race
+
+ Calculated |
+Non-Hispani |
+     c Race |
+Including M |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          1 |     20,651       80.42       80.42
+          2 |      2,220        8.65       89.07
+          3 |        440        1.71       90.78
+          4 |        583        2.27       93.05
+          5 |        115        0.45       93.50
+          6 |        536        2.09       95.59
+          7 |        555        2.16       97.75
+         77 |        213        0.83       98.58
+         99 |        365        1.42      100.00
+------------+-----------------------------------
+      Total |     25,678      100.00
+
+. 
+. // Recoding height variable so its coded in meters not centimeters
+. replace htm4 = htm4/100
+variable htm4 was int now float
+(24,789 real changes made)
+
+. 
+. // Recoding weight variable
+. replace wtkg3 = wtkg3/100
+variable wtkg3 was int now float
+(23,943 real changes made)
+
+. 
+. // Data consistency check
+. count if pregnant ==1 & sex ==1
+  0
+
+. 
+. // Finding descriptive data, excluding any missing data, missing values, unnecessary categories
+. proportion sex if sex !=9 & sex !=.                     // This question is really c
+> onfusing - it doesnt clarify if you want the proportion of males versus females (wha
+> t it says), or you just mean that you don't want the missing values in the proportio
+> n calculation.
+
+Proportion estimation             Number of obs   =     25,675
+
+--------------------------------------------------------------
+             |                                   Logit
+             | Proportion   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+sex          |
+        male |   .4302629     .00309      .4242171    .4363296
+      female |   .5697371     .00309      .5636704    .5757829
+--------------------------------------------------------------
+
+. mean htm4
+
+Mean estimation                   Number of obs   =     24,789
+
+--------------------------------------------------------------
+             |       Mean   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+        htm4 |   1.695013   .0006665      1.693707    1.696319
+--------------------------------------------------------------
+
+. sum htm4
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+        htm4 |     24,789    1.695013    .1049306       1.02       2.13
+
+. mean wtkg3
+
+Mean estimation                   Number of obs   =     23,943
+
+--------------------------------------------------------------
+             |       Mean   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+       wtkg3 |   81.03293   .1318997       80.7744    81.29146
+--------------------------------------------------------------
+
+. sum wtkg3
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+       wtkg3 |     23,943    81.03293    20.40954      22.68     249.48
+
+. proportion pregnant if pregnant !=7 & pregnant !=9 & pregnant !=.       // No codebo
+> ok here? I assume pregnant==1 is yes pregnant...
+
+Proportion estimation             Number of obs   =      3,613
+
+--------------------------------------------------------------
+             |                                   Logit
+             | Proportion   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+pregnant     |
+           1 |   .0365347   .0031217      .0308838    .0431736
+           2 |   .9634653   .0031217      .9568264    .9691162
+--------------------------------------------------------------
+
+. proportion raceth if raceth !=9
+
+Proportion estimation             Number of obs   =     24,984
+
+      _prop_1: raceth = White, non-Hispanic
+      _prop_2: raceth = Black, non-Hispanic
+      _prop_3: raceth = American Indian or Alaskan Nativ
+      _prop_4: raceth = Asian, non-Hispanic
+      _prop_5: raceth = Native Hawaiian or other Pacific
+      _prop_6: raceth = Other race, non-Hispanic
+      _prop_7: raceth = Multiracial, non-Hispanic
+
+--------------------------------------------------------------
+             |                                   Logit
+             | Proportion   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+raceth       |
+     _prop_1 |    .775016   .0026419      .7697956    .7801519
+     _prop_2 |   .0842539   .0017574      .0808727     .087763
+     _prop_3 |   .0148495   .0007652      .0134219    .0164264
+     _prop_4 |   .0224944   .0009382      .0207272    .0244086
+     _prop_5 |   .0035223   .0003748      .0028589    .0043388
+     _prop_6 |   .0042027   .0004093      .0034721    .0050862
+     _prop_7 |   .0195325   .0008755      .0178883    .0213246
+    Hispanic |   .0761287   .0016779      .0729045    .0794833
+--------------------------------------------------------------
+
+. 
+. // Imputing a new BMI variable and examining the distribution graphically
+. generate BMI = wtkg3 / (htm4^2)
+(1,931 missing values generated)
+
+. histogram BMI
+(bin=43, start=8.3305788, width=2.3848702)
+
+. 
+. // Topcoding BMI outliers
+. recode BMI (50/max = 50)
+(BMI: 171 changes made)
+
+. 
+. // Testing whether there is a difference in mean BMI by pregnancy status
+. ttest BMI if sex ==2 & pregnant !=7 & pregnant !=9 & pregnant !=., by (pregnant)
+
+Two-sample t test with equal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       1 |     117    27.63934    .5945857    6.431428    26.46169    28.81699
+       2 |   3,186    27.50207    .1220217    6.887471    27.26282    27.74131
+---------+--------------------------------------------------------------------
+combined |   3,303    27.50693    .1195538    6.870965    27.27252    27.74134
+---------+--------------------------------------------------------------------
+    diff |             .137277    .6468729               -1.131036     1.40559
+------------------------------------------------------------------------------
+    diff = mean(1) - mean(2)                                      t =   0.2122
+Ho: diff = 0                                     degrees of freedom =     3301
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.5840         Pr(|T| > |t|) = 0.8320          Pr(T > t) = 0.4160
+
+. 
+. // Creating new variable to categorically classify BMI into four groups
+. recode BMI (min/18.499 = 1) (18.5/25 = 2) (25.001/30 = 3) (30/50 = 4), gen (BMIgroup
+> )
+(23747 differences between BMI and BMIgroup)
+
+. label define BMIgrouplabel 1 "underweight" 2 "normal weight" 3 "overweight" 4 "obese
+> "
+
+. label values BMIgroup BMIgrouplabel
+
+. 
+. // Chi-squared test between BMI and sex
+. tab BMIgroup sex if BMIgroup !=. & sex !=7 & sex !=9 & sex !=., col chi2
+
++-------------------+
+| Key               |
+|-------------------|
+|     frequency     |
+| column percentage |
++-------------------+
+
+              |    Respondents Sex
+RECODE of BMI |      male     female |     Total
+--------------+----------------------+----------
+  underweight |       110        325 |       435 
+              |      1.04       2.47 |      1.83 
+--------------+----------------------+----------
+normal weight |     2,712      4,797 |     7,509 
+              |     25.60      36.47 |     31.62 
+--------------+----------------------+----------
+   overweight |     4,482      4,118 |     8,600 
+              |     42.31      31.31 |     36.22 
+--------------+----------------------+----------
+        obese |     3,290      3,912 |     7,202 
+              |     31.06      29.74 |     30.33 
+--------------+----------------------+----------
+        Total |    10,594     13,152 |    23,746 
+              |    100.00     100.00 |    100.00 
+
+          Pearson chi2(3) = 484.3897   Pr = 0.000
+
+. 
+. // Creating a binary variable defining BMI severe obesity
+. recode BMI (min/35 = 0) (35/50 = 1), gen (BMIbinary)
+(23747 differences between BMI and BMIbinary)
+
+. label define BMIbinarylabel 0 "Not class 2 or higher obesity" 1 "Severe or higher ob
+> esity"
+
+. label values BMIbinary BMIbinarylabel
+
+. 
+. // Test sex differences for severe obesity 
+. prtest BMIbinary if sex !=9 & sex !=., by (sex)
+
+Two-sample test of proportions                  male: Number of obs =    10594
+                                              female: Number of obs =    13152
+------------------------------------------------------------------------------
+       Group |       Mean   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+        male |   .1077969    .003013                      .1018914    .1137023
+      female |   .1288777   .0029217                      .1231514    .1346041
+-------------+----------------------------------------------------------------
+        diff |  -.0210809    .004197                     -.0293068   -.0128549
+             |  under Ho:   .0042342    -4.98   0.000
+------------------------------------------------------------------------------
+        diff = prop(male) - prop(female)                          z =  -4.9787
+    Ho: diff = 0
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(Z < z) = 0.0000         Pr(|Z| > |z|) = 0.0000          Pr(Z > z) = 1.0000
+
+. 
+. // Grabbing some data for tables
+. proportion BMIgroup if BMIgroup !=.
+
+Proportion estimation             Number of obs   =     23,747
+
+      _prop_2: BMIgroup = normal weight
+
+--------------------------------------------------------------
+             |                                   Logit
+             | Proportion   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+BMIgroup     |
+ underweight |   .0183181   .0008702      .0166881    .0201041
+     _prop_2 |   .3162084   .0030175      .3103237    .3221525
+  overweight |    .362151    .003119      .3560602    .3682864
+       obese |   .3033225   .0029831      .2975074    .3092013
+--------------------------------------------------------------
+
+. mean BMI if BMI !=.
+
+Mean estimation                   Number of obs   =     23,747
+
+--------------------------------------------------------------
+             |       Mean   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+         BMI |   28.02528   .0391445      27.94856    28.10201
+--------------------------------------------------------------
+
+. sum BMI if BMI !=.
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+         BMI |     23,747    28.02528    6.032187   8.330579         50
+
+. proportion BMIbinary if BMIbinary !=.
+
+Proportion estimation             Number of obs   =     23,747
+
+      _prop_1: BMIbinary = Not class 2 or higher obesity
+      _prop_2: BMIbinary = Severe or higher obesity
+
+--------------------------------------------------------------
+             |                                   Logit
+             | Proportion   Std. Err.     [95% Conf. Interval]
+-------------+------------------------------------------------
+BMIbinary    |
+     _prop_1 |   .8804902   .0021051      .8763021    .8845551
+     _prop_2 |   .1195098   .0021051      .1154449    .1236979
+--------------------------------------------------------------
+
+. sum BMIbinary if BMIbinary !=.
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+   BMIbinary |     23,747    .1195098    .3243943          0          1
+
+. 
+. // Multivariate Linear Regression betwen BMI and age, female, health insurance, exercise, sleep duration, and prior heart attack diagnosis
+. reg BMI age80 i.female i.hlthpln1 i.exerany2 sleptim1 i.cvdinfr4 if age80 <65
+
+      Source |       SS           df       MS      Number of obs   =    14,920
+-------------+----------------------------------   F(6, 14913)     =     95.97
+       Model |  21985.8076         6  3664.30127   Prob > F        =    0.0000
+    Residual |  569433.525    14,913  38.1837005   R-squared       =    0.0372
+-------------+----------------------------------   Adj R-squared   =    0.0368
+       Total |  591419.333    14,919  39.6420225   Root MSE        =    6.1793
+
+------------------------------------------------------------------------------
+         BMI |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+       age80 |   .0502977   .0038802    12.96   0.000      .042692    .0579033
+    1.female |  -.4805712   .1018564    -4.72   0.000    -.6802223     -.28092
+  1.hlthpln1 |   .4536127   .1687626     2.69   0.007     .1228172    .7844081
+  1.exerany2 |  -1.968556   .1246271   -15.80   0.000    -2.212841   -1.724272
+    sleptim1 |  -.2209397    .034735    -6.36   0.000    -.2890246   -.1528548
+  1.cvdinfr4 |   1.155448   .2948782     3.92   0.000     .5774502    1.733445
+       _cons |   28.87529   .3416456    84.52   0.000     28.20562    29.54496
+------------------------------------------------------------------------------
+
+. 
+. // Testing MLR for heteroscedasticity, and redo robust variance
+. estat hettest
+
+Breusch-Pagan / Cook-Weisberg test for heteroskedasticity 
+         Ho: Constant variance
+         Variables: fitted values of BMI
+
+         chi2(1)      =    65.89
+         Prob > chi2  =   0.0000
+
+. reg BMI age80 i.female i.hlthpln1 i.exerany2 sleptim1 i.cvdinfr4 if age80 <65, vce (
+> robust)
+
+Linear regression                               Number of obs     =     14,920
+                                                F(6, 14913)       =      86.19
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0372
+                                                Root MSE          =     6.1793
+
+------------------------------------------------------------------------------
+             |               Robust
+         BMI |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+       age80 |   .0502977   .0037797    13.31   0.000      .042889    .0577064
+    1.female |  -.4805712   .1003548    -4.79   0.000    -.6772788   -.2838635
+  1.hlthpln1 |   .4536127   .1719142     2.64   0.008     .1166396    .7905857
+  1.exerany2 |  -1.968556   .1388075   -14.18   0.000    -2.240636   -1.696477
+    sleptim1 |  -.2209397   .0430883    -5.13   0.000     -.305398   -.1364814
+  1.cvdinfr4 |   1.155448   .3123917     3.70   0.000     .5431215    1.767774
+       _cons |   28.87529   .3784538    76.30   0.000     28.13347    29.61711
+------------------------------------------------------------------------------
+
+. 
+. // Multivariate Logistic Regression on odds of heart attack based on sever obesity, age, female, health insurance, exercise, and sleep duration
+. logistic cvdinfr4 i.BMIbinary age80 i.female i.hlthpln1 i.exerany2 sleptim1
+
+Logistic regression                             Number of obs     =     23,311
+                                                LR chi2(6)        =    1221.65
+                                                Prob > chi2       =     0.0000
+Log likelihood = -4754.9598                     Pseudo R2         =     0.1138
+
+-------------------------------------------------------------------------------------
+           cvdinfr4 | Odds Ratio   Std. Err.      z    P>|z|     [95% Conf. Interval]
+--------------------+----------------------------------------------------------------
+          BMIbinary |
+Severe or higher..  |   1.423952   .1174405     4.29   0.000     1.211414    1.673779
+              age80 |   1.063812   .0025877    25.43   0.000     1.058752    1.068896
+           1.female |   .4358339   .0251017   -14.42   0.000     .3893107    .4879167
+         1.hlthpln1 |   .8368105   .1127156    -1.32   0.186     .6426479    1.089635
+         1.exerany2 |   .5587978    .032941    -9.87   0.000     .4978247    .6272387
+           sleptim1 |   .9355166   .0174759    -3.57   0.000     .9018839    .9704034
+              _cons |   .0056963   .0012561   -23.44   0.000     .0036973     .008776
+-------------------------------------------------------------------------------------
+Note: _cons estimates baseline odds.
+
+. 
+. 
+. log close
+      name:  <unnamed>
+       log:  D:\Dropbox\Dropbox\Study\5961 STATA Skill lab\final.log
+  log type:  text
+ closed on:   3 Oct 2018, 01:24:21
+--------------------------------------------------------------------------------------
